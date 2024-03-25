@@ -12,7 +12,6 @@ class ShapeTracker:
         self.stride = [1]
         self.pad = [0]
 
-
     def __eq__(self, other):  # Incomplete
         return mean([a == b for a, b in zip(self.shape, other.shape)]) == 1 
 
@@ -25,10 +24,12 @@ class ShapeTracker:
         # if isinstance(index, tuple): return ShapeTracker([self.shape[i] for i in index])
         # Also handle tensor
 
+    def __len__(self): return len(self.shape)
+
     def pop(self, axis):
         if axis is not None: self.shape = tuple([i for n, i in enumerate(self.shape) if n != axis%len(self.shape)]) 
         else: self.shape = (1,) 
-
+        
     def copy(self): return ShapeTracker(self.shape)
     def flat(self): return prod(self.shape)
 
@@ -68,6 +69,17 @@ class LazyBuffer:
     def shapeTrack(self, shape):
         self.shapeTrack = ShapeTracker(shape)
 
+    def zero_grad(self):
+        self.grad = 1
+
+    def __getitem__(self, index):   # THIS IS NOT LAZY!!
+        if not isinstance(self, Tensor): raise "Not supported on lazybuffers!"
+        if isinstance(index, slice):
+            start, stop, step = index.indices(len(self.data))
+            return Tensor(self.data[start:stop:step])
+        else:
+            return Tensor(self.data[index])
+
 ### TENSOR ###
 
 class Tensor(LazyBuffer):  # Tensor is just lazybuffer that contains data 
@@ -84,12 +96,6 @@ class Tensor(LazyBuffer):  # Tensor is just lazybuffer that contains data
     def numpy(self):
         return self.data
 
-    def __getitem__(self, index):   # THIS IS NOT LAZY!!
-        if isinstance(index, slice):
-            start, stop, step = index.indices(len(self.data))
-            return Tensor(self.data[start:stop:step])
-        else:
-            return Tensor(self.data[index])
 
 
 ### OPERATION TYPES ###
@@ -100,15 +106,33 @@ class Unary(LazyBuffer):
         self.a = Tensor(a) if not isinstance(a, LazyBuffer) else a
         self.shape = self.a.shape.copy()
 
+    def zero_grad(self):
+        self.grad = 1
+        self.a.zero_grad()
+
 class Binary(LazyBuffer):
-    def __init__(self, a, b) -> None:
+    def __init__(self, a, b, skip_reshapes=False) -> None:
         super().__init__()
         self.a = Tensor(a) if not isinstance(a, LazyBuffer) else a
         self.b = Tensor(b) if not isinstance(b, LazyBuffer) else b
         self.shape = self.a.shape.copy()  
-        if self.a.shape.flat() != self.b.shape.flat() and self.a.shape.shape == (self.b.shape.shape + (self.a.shape.shape[-1],)): self.b = Adapt(self.b, self.a)  # Untested
-        # assert self.a.shape == self.b.shape, f"Shapes {self.a.shape} and {self.b.shape} are not compatible" 
+        # THIS IS FUCKING BROKEN
+        if not skip_reshapes:
+            if self.a.shape.flat() > self.b.shape.flat():# and self.a.shape.shape == (self.b.shape.shape + (self.a.shape.shape[-1],)): 
+                self.b = Adapt(self.b, self.a)  # Untested
+                self.b.shape.shape = self.a.shape.shape
+            if self.a.shape.flat() < self.b.shape.flat():# and self.b.shape.shape == (self.a.shape.shape + (self.b.shape.shape[-1],)): 
+                self.a = Adapt(self.a, self.b)  # Untested
+                self.a.shape.shape = self.b.shape.shape
+        #print(self.a.data.shape, self.b.data.shape)
+        
         # This ^ doesnt take b scalars into account
+
+    def zero_grad(self):
+        self.grad = 1
+        self.a.zero_grad()
+        self.b.zero_grad()
+        
 
 class Reduce(LazyBuffer):
     def __init__(self, a, axis=None) -> None:
@@ -120,12 +144,20 @@ class Reduce(LazyBuffer):
         self.shape.pop(axis)
         # self.shape = 1 if axis is None else (elm for i, elm in enumerate(self.a.shape) if i != axis)
 
+    def zero_grad(self):
+        self.grad = 1
+        self.a.zero_grad()
+
 class Broadcast(LazyBuffer):
     def __init__(self, a, b) -> None:
         super().__init__()
         self.a = Tensor(a) if not isinstance(a, LazyBuffer) else a
         self.b = Tensor(b) if not isinstance(b, LazyBuffer) else b
-        self.shape = ShapeTracker(self.a.shape.shape + (self.b.forward(),))
+        self.shape = ShapeTracker(self.a.shape.shape)
+
+    def zero_grad(self):
+        self.grad = 1
+        self.a.zero_grad()
 
 ### OPERATIONS ###
 
@@ -166,6 +198,7 @@ class Pow(Binary):
 
     def backward(self, grad=1):
         self.grad += grad
+        # print("DIFF: ", self.grad)
         self.a.backward(grad * self.b.data * self.a.data ** (self.b.data - 1))
         # I'm not calculating the derivative on b... If you care do it yourself
         
@@ -178,7 +211,7 @@ class Add(Binary):
         self.grad += grad
         self.a.backward(grad)
         self.b.backward(grad)
-
+        
 class Mul(Binary):
     def forward(self):
         self.data = self.a.forward() * self.b.forward()
@@ -191,18 +224,19 @@ class Mul(Binary):
 
 class MatMul(Binary):
     def __init__(self, a, b) -> None:
-        super().__init__(a, b)
+        super().__init__(a, b, skip_reshapes=True)
         self.shape = ShapeTracker(self.a.shape.shape[:-1] + self.b.shape.shape[1:])
 
     def forward(self):
+        # print("MatMul: ", self.a.shape, self.b.shape)
         self.data = self.a.forward() @ self.b.forward()
         return self.data
 
     def backward(self, grad=1):
         self.grad += grad
+        # print("MatMul: ", self.a.shape, self.b.shape, grad.shape)
         self.a.backward(grad @ self.b.data.T)
         self.b.backward(self.a.data.T @ grad)
-
 
 class Sum(Reduce): 
     def forward(self):
@@ -211,6 +245,9 @@ class Sum(Reduce):
 
     def backward(self, grad=Tensor((1,))):
         self.grad += grad
+        # print("DIFFS: ", Adapt(self.grad, self.a).numpy())
+        # print(self.a.shape)
+        # print(Adapt(self.grad, self.a).numpy().shape)
         self.a.backward(Adapt(self.grad, self.a).numpy())
 
 class Mean(Reduce):  # Untested
@@ -235,14 +272,19 @@ class Adapt(Broadcast):
     def forward(self):
         # given a tensor and b shape, adapt a to b
         self.original_shape = self.a.shape
+        self.original_flat = self.a.shape.flat()
         times_smaller = self.b.shape.flat() // self.a.shape.flat()
-        self.data = np.repeat(self.a.forward(), times_smaller).reshape(*self.b.shape)
+        if len(self.a.shape) != len(self.b.shape): self.repeated_axis = -1
+        else: self.repeated_axis = [n for n, z in enumerate(zip(self.a.shape, self.b.shape)) if z[0] != z[1]][-1]
+        self.data = np.repeat(self.a.forward(), times_smaller, axis=self.repeated_axis).reshape(*self.b.shape)
         return self.data
     
     def backward(self, grad=1):
         self.grad += grad
-        self.a.backward(np.sum(grad, axis=-1).reshape(self.original_shape))
-        
+        # print(self.grad.shape, self.a.shape, self.b.shape)
+        if self.original_flat == 1: self.repeated_axis = None
+        self.a.backward(np.sum(grad, axis=self.repeated_axis).reshape(self.original_shape))
+
 
 class Rand(Tensor):
     def __init__(self, shape, requires_grad=False) -> None:
@@ -279,3 +321,16 @@ class Linear(Module):
     #     self.weight.grad += self.x.T @ grad
     #     self.bias.grad += grad.sum(axis=0)
     #     return grad @ self.weight.T
+
+
+
+class SGD(Module):
+    def __init__(self, parameters, lr=0.01) -> None:
+        self.parameters = parameters
+        self.lr = lr
+
+    def step(self):
+        # for param in self.parameters:
+        #     param.data -= param.grad * self.lr
+        self.parameters[0].data -= self.parameters[0].grad * self.lr
+        self.parameters[1].data -= self.parameters[1].grad.sum(0) * self.lr
