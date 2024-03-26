@@ -73,7 +73,7 @@ class LazyBuffer:
         self.grad = 1
 
     def __getitem__(self, index):   # THIS IS NOT LAZY!!
-        if not isinstance(self, Tensor): raise "Not supported on lazybuffers!"
+        #if not isinstance(self, Tensor): raise BaseException("Not supported on lazybuffers!")
         if isinstance(index, slice):
             start, stop, step = index.indices(len(self.data))
             return Tensor(self.data[start:stop:step])
@@ -90,6 +90,7 @@ class Tensor(LazyBuffer):  # Tensor is just lazybuffer that contains data
 
     def forward(self):
         return self.data
+    
     def backward(self, grad):  # Leaf tensors don't need to do anything
         self.grad += grad
 
@@ -234,6 +235,7 @@ class MatMul(Binary):
 
     def backward(self, grad=1):
         self.grad += grad
+        print("A", self.a.shape, "B", self.b.shape, "GRAD", grad.shape)
         # print("MatMul: ", self.a.shape, self.b.shape, grad.shape)
         self.a.backward(grad @ self.b.data.T)
         self.b.backward(self.a.data.T @ grad)
@@ -245,7 +247,7 @@ class Sum(Reduce):
 
     def backward(self, grad=Tensor((1,))):
         self.grad += grad
-        # print("DIFFS: ", Adapt(self.grad, self.a).numpy())
+        # print("DIFFS: ", Adapt(self.grad, self.a).numpy()) 
         # print(self.a.shape)
         # print(Adapt(self.grad, self.a).numpy().shape)
         self.a.backward(Adapt(self.grad, self.a).numpy())
