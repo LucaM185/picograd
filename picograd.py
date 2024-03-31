@@ -64,14 +64,15 @@ class LazyBuffer:
     def softmax(self, axis=-1): return softmax(self, axis=axis)  # Untested
     def max(self, axis=None): return Max(self, axis)  # Untested
     def argmax(self, axis=None): return ArgMax(self, axis)  # NOT LAZY
+    def tanh(self): return tanh(self) 
 
     def __str__(self): return self.numpy().__str__()
 
     def shapeTrack(self, shape):
         self.shapeTrack = ShapeTracker(shape)
  
-    def zero_grad(self):
-        self.grad = 0
+    def zero_grad(self, scale=0):
+        self.grad *= scale
 
     def __getitem__(self, index):   # THIS IS NOT LAZY!!
         #if not isinstance(self, Tensor): raise BaseException("Not supported on lazybuffers!")
@@ -108,9 +109,9 @@ class Unary(LazyBuffer):
         self.a = Tensor(a) if not isinstance(a, LazyBuffer) else a
         self.shape = self.a.shape.copy()
 
-    def zero_grad(self):
-        self.grad = 0
-        self.a.zero_grad()
+    def zero_grad(self, scale=0):
+        self.grad *= scale
+        self.a.zero_grad(scale)
 
 class Binary(LazyBuffer):
     def __init__(self, a, b, skip_reshapes=False) -> None:
@@ -130,10 +131,10 @@ class Binary(LazyBuffer):
         
         # This ^ doesnt take b scalars into account
 
-    def zero_grad(self):
-        self.grad = 0
-        self.a.zero_grad()
-        self.b.zero_grad()
+    def zero_grad(self, scale=0):
+        self.grad *= scale
+        self.a.zero_grad(scale)
+        self.b.zero_grad(scale)
         
 
 class Reduce(LazyBuffer):
@@ -146,9 +147,9 @@ class Reduce(LazyBuffer):
         self.shape.pop(axis)
         # self.shape = 1 if axis is None else (elm for i, elm in enumerate(self.a.shape) if i != axis)
 
-    def zero_grad(self):
-        self.grad = 0
-        self.a.zero_grad()
+    def zero_grad(self, scale=0):
+        self.grad *= scale
+        self.a.zero_grad(scale)
 
 class Broadcast(LazyBuffer):
     def __init__(self, a, b) -> None:
@@ -157,9 +158,9 @@ class Broadcast(LazyBuffer):
         self.b = Tensor(b) if not isinstance(b, LazyBuffer) else b
         self.shape = ShapeTracker(self.a.shape.shape)
 
-    def zero_grad(self):
-        self.grad = 0
-        self.a.zero_grad()
+    def zero_grad(self, scale=0):
+        self.grad *= scale
+        self.a.zero_grad(scale)
 
 ### OPERATIONS ###
         
@@ -327,21 +328,52 @@ class Linear(Module):
     def __call__(self, x):
         return x @ self.weight + self.bias
 
+    def params(self):
+        return [self.weight, self.bias]
+
     # def backward(self, grad):
     #     self.weight.grad += self.x.T @ grad
     #     self.bias.grad += grad.sum(axis=0)
     #     return grad @ self.weight.T
 
 
-
-class SGD(Module):
+class Optimizer(Module):
     def __init__(self, parameters, lr=0.01) -> None:
-        self.parameters = parameters
         self.lr = lr
+        self.parameters = []
+        for p in parameters:  # this could be written better prob
+            if isinstance(p, LazyBuffer):
+                self.parameters.append(p)
+            elif isinstance(p, Module):
+                for pp in p.params():
+                    self.parameters.append(pp)
+
+
+class SGD(Optimizer):
+    def __init__(self, parameters, lr=0.01) -> None:
+        super().__init__(parameters, lr)
 
     def step(self):
+        for param in self.parameters:
+            param.data -= param.grad * self.lr
 
-        # for param in self.parameters:
-        #     param.data -= param.grad * self.lr
-        self.parameters[0].data -= self.parameters[0].grad * self.lr
-        self.parameters[1].data -= self.parameters[1].grad * self.lr
+    def zero_grad(self):
+        for param in self.parameters:
+            param.zero_grad()
+
+class Adam(Optimizer):
+    def __init__(self, parameters, lr=0.01) -> None:
+        super().__init__(parameters, lr)
+        for p in self.parameters:
+            p.backup = None
+
+    def step(self): 
+        for param in self.parameters:
+            param.data -= param.grad * self.lr
+            # if param.backup is None: param.data -= param.grad * self.lr
+            # else: param.data -= param.backup * self.lr
+            # param.backup = param.backup * 0.9 + param.grad * 0.1
+
+    def zero_grad(self):
+        for param in self.parameters:
+            param.zero_grad(0.15)
