@@ -243,7 +243,7 @@ class MatMul(Binary):
         self.b.backward(self.a.data.T @ grad)
 
 class Sum(Reduce): 
-    def forward(self):
+    def forward(self): 
         self.data = np.sum(self.a.forward(), axis=self.axis)
         return self.data
 
