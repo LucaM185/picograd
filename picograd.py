@@ -39,7 +39,6 @@ class LazyBuffer:
     def __init__(self) -> None:
         self.buffer = []
         self.grad = 0
-        # print(type(self).__name__)
     
     def numpy(self):
         return self.forward()
@@ -61,8 +60,8 @@ class LazyBuffer:
     def sum(self, axis=None): return Sum(self, axis)
     def mean(self, axis=None): return Sum(self, axis) * (1 / self.shapeTrack.shape[axis])  # Untested
     def onehot(self, dict_size=None): return OneHot(self, dict_size) # NOT LAZY
-    def softmax(self, axis=-1): return softmax(self, axis=axis)  # Untested
-    def max(self, axis=None): return Max(self, axis)  # Untested
+    def softmax(self, axis=-1): return softmax(self, axis=axis)  
+    def max(self, axis=None): return Max(self, axis)  
     def argmax(self, axis=None): return ArgMax(self, axis)  # NOT LAZY
     def tanh(self): return tanh(self) 
 
@@ -75,7 +74,6 @@ class LazyBuffer:
         self.grad *= scale
 
     def __getitem__(self, index):   # THIS IS NOT LAZY!!
-        #if not isinstance(self, Tensor): raise BaseException("Not supported on lazybuffers!")
         if isinstance(index, slice):
             start, stop, step = index.indices(len(self.data))
             return Tensor(self.data[start:stop:step])
@@ -99,8 +97,6 @@ class Tensor(LazyBuffer):  # Tensor is just lazybuffer that contains data
     def numpy(self):
         return self.data
 
-
-
 ### OPERATION TYPES ###
 
 class Unary(LazyBuffer):
@@ -119,16 +115,14 @@ class Binary(LazyBuffer):
         self.a = Tensor(a) if not isinstance(a, LazyBuffer) else a
         self.b = Tensor(b) if not isinstance(b, LazyBuffer) else b
         self.shape = self.a.shape.copy()  
-        # THIS IS FUCKING BROKEN
+        # Refactor this (and test it) 
         if not skip_reshapes:
-            if self.a.shape.flat() > self.b.shape.flat():# and self.a.shape.shape == (self.b.shape.shape + (self.a.shape.shape[-1],)): 
-                self.b = Adapt(self.b, self.a)  # Untested
+            if self.a.shape.flat() > self.b.shape.flat():
+                self.b = Adapt(self.b, self.a)  
                 self.b.shape.shape = self.a.shape.shape
-            if self.a.shape.flat() < self.b.shape.flat():# and self.b.shape.shape == (self.a.shape.shape + (self.b.shape.shape[-1],)): 
-                self.a = Adapt(self.a, self.b)  # Untested
+            if self.a.shape.flat() < self.b.shape.flat():
+                self.a = Adapt(self.a, self.b)  
                 self.a.shape.shape = self.b.shape.shape
-        #print(self.a.data.shape, self.b.data.shape)
-        
         # This ^ doesnt take b scalars into account
 
     def zero_grad(self, scale=0):
@@ -206,7 +200,6 @@ class Pow(Binary):
 
     def backward(self, grad=1):
         self.grad += grad
-        # print("DIFF: ", self.grad)
         self.a.backward(grad * self.b.data * self.a.data ** (self.b.data - 1))
         # I'm not calculating the derivative on b... If you care do it yourself
         
@@ -236,16 +229,11 @@ class MatMul(Binary):
         self.shape = ShapeTracker(self.a.shape.shape[:-1] + self.b.shape.shape[1:])
 
     def forward(self):
-        # print("MatMul: ", self.a.shape, self.b.shape)
         self.data = self.a.forward() @ self.b.forward()
         return self.data
 
     def backward(self, grad=0):
         self.grad += grad
-        # print("A", self.a.shape, "B", self.b.shape, "GRAD", grad.shape)
-        # print("MatMul: ", self.a.shape, self.b.shape, grad.shape)
-        # print((grad @ self.b.data.T).shape, grad @ self.b.data.T)
-        # print((self.a.data.T @ grad).shape, self.a.data.T @ grad)
         self.a.backward(grad @ self.b.data.T)
         self.b.backward(self.a.data.T @ grad)
 
@@ -256,9 +244,6 @@ class Sum(Reduce):
 
     def backward(self, grad=Tensor((1,))):
         self.grad += grad
-        # print("DIFFS: ", Adapt(self.grad, self.a).numpy()) 
-        # print(self.a.shape)
-        # print(Adapt(self.grad, self.a).numpy().shape)
         self.a.backward(Adapt(self.grad, self.a).numpy())
 
 class Mean(Reduce):  # Untested
@@ -331,12 +316,6 @@ class Linear(Module):
     def params(self):
         return [self.weight, self.bias]
 
-    # def backward(self, grad):
-    #     self.weight.grad += self.x.T @ grad
-    #     self.bias.grad += grad.sum(axis=0)
-    #     return grad @ self.weight.T
-
-
 class Optimizer(Module):
     def __init__(self, parameters, lr=0.01) -> None:
         self.lr = lr
@@ -348,10 +327,10 @@ class Optimizer(Module):
                 for pp in p.params():
                     self.parameters.append(pp)
 
-
 class SGD(Optimizer):
-    def __init__(self, parameters, lr=0.01) -> None:
+    def __init__(self, parameters, lr=0.01, momentum=0) -> None:
         super().__init__(parameters, lr)
+        self.momentum = momentum
 
     def step(self):
         for param in self.parameters:
@@ -359,21 +338,24 @@ class SGD(Optimizer):
 
     def zero_grad(self):
         for param in self.parameters:
-            param.zero_grad()
+            param.zero_grad(self.momentum)
 
 class Adam(Optimizer):
-    def __init__(self, parameters, lr=0.01) -> None:
+    def __init__(self, parameters, lr=0.01, beta1=0.9, beta2=0.999, epsilon=1e-8) -> None:
         super().__init__(parameters, lr)
-        for p in self.parameters:
-            p.backup = None
-
-    def step(self): 
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = epsilon
         for param in self.parameters:
-            param.data -= param.grad * self.lr
-            # if param.backup is None: param.data -= param.grad * self.lr
-            # else: param.data -= param.backup * self.lr
-            # param.backup = param.backup * 0.9 + param.grad * 0.1
+            param.first_deriv = 0
+            param.second_deriv = 0
 
+    def step(self):
+        for param in self.parameters:
+            param.first_deriv = self.beta1 * param.first_deriv + (1 - self.beta1) * param.grad
+            param.second_deriv = self.beta2 * param.second_deriv + (1 - self.beta2) * (param.grad**2)
+            param.data -= self.lr * param.first_deriv / (np.sqrt(param.second_deriv) + self.epsilon)
+    
     def zero_grad(self):
         for param in self.parameters:
-            param.zero_grad(0.15)
+            param.zero_grad()

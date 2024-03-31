@@ -12,11 +12,11 @@ print(X_train.sum(-1))
 
 # Model definition
 batch_size = 128
-epochs = 80
+epochs = 200
 classes = 10
 fc0 = Linear(784, 128)
 fc1 = Linear(128, classes)
-optim = Adam([fc0, fc1], lr=0.1)
+optim = Adam([fc0, fc1], lr=0.001)
 
 # Training loop
 lossi = []
@@ -47,3 +47,7 @@ plt.plot(np.array(lossi)/max(lossi), label='loss')
 plt.plot(acci, label='accuracy')
 plt.legend()
 plt.show()
+
+
+            # momentum = self.beta1 * param.backup + (1 - self.beta1) * (param.grad**2)
+            # param -= self.lr * param.grad / (np.sqrt(momentum) + self.epsilon)
