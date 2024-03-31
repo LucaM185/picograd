@@ -162,9 +162,11 @@ class Broadcast(LazyBuffer):
         self.a.zero_grad()
 
 ### OPERATIONS ###
+        
+def tanh(tensor): 
+    return (Exp(tensor) - Exp(-tensor)) / (Exp(tensor) + Exp(-tensor))
 
 def softmax(tensor, axis=-1): # safe softmax
-    # exp = Exp(tensor - tensor.max())
     return Exp(tensor - tensor.max()) / (Exp(tensor - tensor.max()).sum(axis=axis) )
 
 def ArgMax(tensor, axis=None):
@@ -319,8 +321,8 @@ class Linear(Module):
     def __init__(self, in_features, out_features) -> None:
         self.in_features = in_features
         self.out_features = out_features
-        self.weight = Randn((in_features, out_features), requires_grad=True) * (1 / np.sqrt(in_features)) 
-        self.bias = Randn((1, out_features), requires_grad=True) * (1 / np.sqrt(in_features)) # double check the 1 in (1, out_features)
+        self.weight = Randn((in_features, out_features), requires_grad=True) #* (1 / np.sqrt(in_features)) 
+        self.bias = Randn((1, out_features), requires_grad=True) #* (1 / np.sqrt(in_features)) # double check the 1 in (1, out_features)
 
     def __call__(self, x):
         return x @ self.weight + self.bias
@@ -338,7 +340,8 @@ class SGD(Module):
         self.lr = lr
 
     def step(self):
+
         # for param in self.parameters:
         #     param.data -= param.grad * self.lr
         self.parameters[0].data -= self.parameters[0].grad * self.lr
-        self.parameters[1].data -= self.parameters[1].grad.sum(0) * self.lr
+        self.parameters[1].data -= self.parameters[1].grad * self.lr

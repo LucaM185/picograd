@@ -22,32 +22,39 @@ X_train, y_train = dataset[:, 1:]/255, dataset[:, 0]
 print(X_train.sum(-1))
 batch_size = 128
 
-# optim = SGD([weight, bias], lr=0.001)
-for i in range(0, 8000):
+lossi = []
+acci = []
+optim = SGD([fc0.weight, fc0.bias], lr=0.03)
+for i in range(0, 800):
     idx = np.random.randint(0, dataset.shape[0], (batch_size,))
     labels = y_train[idx].onehot(classes)
 
-    pro = X_train[idx] @ weight + bias
+    pro = fc0(X_train[idx])# @ weight + bias
+    # pro = X_train[idx] @ weight + bias
     out = (pro).softmax()  # (5, 10) + (1, 10)
     diff = out - labels # (5, 10) 
     diffs = (diff)**2
     loss = (diffs).sum()
     loss.numpy()
     loss.backward()
-    weight.data -= weight.grad * 0.001
-    bias.data -= bias.grad * 0.001
-    # optim.step()
-
-
+    optim.step()
 
     if i % 100 == 0: 
         print("Loss: ", round(loss.numpy()/batch_size, 2))
-        print("Accuracy: ", ((out.argmax(-1).data == y_train[idx].data)).sum())
+        print("Accuracy: ", round(((out.argmax(-1).data == y_train[idx].data)).mean(), 2))
         print()
 
     loss.zero_grad()
 
 
+    lossi.append(loss.numpy())
+    acci.append(((out.argmax(-1).data == y_train[idx].data)).mean())
 
 
+import matplotlib.pyplot as plt
 
+# DRAW LOSS and ACCURACY in the same plot
+plt.plot(np.array(lossi)/max(lossi), label='loss')
+plt.plot(acci, label='accuracy')
+plt.legend()
+plt.show()
