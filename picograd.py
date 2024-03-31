@@ -68,7 +68,7 @@ class LazyBuffer:
 
     def shapeTrack(self, shape):
         self.shapeTrack = ShapeTracker(shape)
-
+ 
     def zero_grad(self):
         self.grad = 1
 
