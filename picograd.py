@@ -235,8 +235,10 @@ class MatMul(Binary):
 
     def backward(self, grad=1):
         self.grad += grad
-        print("A", self.a.shape, "B", self.b.shape, "GRAD", grad.shape)
+        # print("A", self.a.shape, "B", self.b.shape, "GRAD", grad.shape)
         # print("MatMul: ", self.a.shape, self.b.shape, grad.shape)
+        # print((grad @ self.b.data.T).shape, grad @ self.b.data.T)
+        # print((self.a.data.T @ grad).shape, self.a.data.T @ grad)
         self.a.backward(grad @ self.b.data.T)
         self.b.backward(self.a.data.T @ grad)
 

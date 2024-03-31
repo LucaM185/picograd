@@ -16,7 +16,7 @@ X_train, y_train = dataset[:, 1:]/255, dataset[:, 0]
 print(X_train.sum(-1))
 
 # optim = SGD([weight, bias], lr=0.001)
-for i in range(2000):
+for i in range(8000):
     idx = np.random.randint(0, dataset.shape[0], (50,))
 
     pro = X_train[idx] @ weight + bias
@@ -27,18 +27,18 @@ for i in range(2000):
     diffs = (diff)**2
     loss = (diffs).sum()
     loss.numpy()
-    #print(loss.numpy())
+    # print(loss.numpy())
     loss.backward()
-    print(bias.grad)
+    # print(weight.grad.max())
     weight.data -= weight.grad * 0.001
     bias.data -= bias.grad * 0.001
     # optim.step()
     loss.zero_grad()
 
 
-    # if i % 50 == 0: 
-    #     print(weight.data)
-    #     print(loss)
+    if i % 50 == 0: 
+        print(weight.data[0:5, 0:5])
+        print(loss)
 
 
 
