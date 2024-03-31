@@ -48,6 +48,3 @@ plt.plot(acci, label='accuracy')
 plt.legend()
 plt.show()
 
-
-            # momentum = self.beta1 * param.backup + (1 - self.beta1) * (param.grad**2)
-            # param -= self.lr * param.grad / (np.sqrt(momentum) + self.epsilon)
