@@ -63,6 +63,7 @@ class LazyBuffer:
     def onehot(self, dict_size=None): return OneHot(self, dict_size) # NOT LAZY
     def softmax(self, axis=-1): return softmax(self, axis=axis)  # Untested
     def max(self, axis=None): return Max(self, axis)  # Untested
+    def argmax(self, axis=None): return ArgMax(self, axis)  # NOT LAZY
 
     def __str__(self): return self.numpy().__str__()
 
@@ -70,7 +71,7 @@ class LazyBuffer:
         self.shapeTrack = ShapeTracker(shape)
  
     def zero_grad(self):
-        self.grad = 1
+        self.grad = 0
 
     def __getitem__(self, index):   # THIS IS NOT LAZY!!
         #if not isinstance(self, Tensor): raise BaseException("Not supported on lazybuffers!")
@@ -108,7 +109,7 @@ class Unary(LazyBuffer):
         self.shape = self.a.shape.copy()
 
     def zero_grad(self):
-        self.grad = 1
+        self.grad = 0
         self.a.zero_grad()
 
 class Binary(LazyBuffer):
@@ -130,7 +131,7 @@ class Binary(LazyBuffer):
         # This ^ doesnt take b scalars into account
 
     def zero_grad(self):
-        self.grad = 1
+        self.grad = 0
         self.a.zero_grad()
         self.b.zero_grad()
         
@@ -146,7 +147,7 @@ class Reduce(LazyBuffer):
         # self.shape = 1 if axis is None else (elm for i, elm in enumerate(self.a.shape) if i != axis)
 
     def zero_grad(self):
-        self.grad = 1
+        self.grad = 0
         self.a.zero_grad()
 
 class Broadcast(LazyBuffer):
@@ -157,7 +158,7 @@ class Broadcast(LazyBuffer):
         self.shape = ShapeTracker(self.a.shape.shape)
 
     def zero_grad(self):
-        self.grad = 1
+        self.grad = 0
         self.a.zero_grad()
 
 ### OPERATIONS ###
@@ -165,6 +166,9 @@ class Broadcast(LazyBuffer):
 def softmax(tensor, axis=-1): # safe softmax
     # exp = Exp(tensor - tensor.max())
     return Exp(tensor - tensor.max()) / (Exp(tensor - tensor.max()).sum(axis=axis) )
+
+def ArgMax(tensor, axis=None):
+    return Tensor(np.argmax(tensor.data, axis=axis))
 
 def OneHot(tensor, dict_size):
     if dict_size is None: dict_size = int(tensor.data.max()) + 1
@@ -233,7 +237,7 @@ class MatMul(Binary):
         self.data = self.a.forward() @ self.b.forward()
         return self.data
 
-    def backward(self, grad=1):
+    def backward(self, grad=0):
         self.grad += grad
         # print("A", self.a.shape, "B", self.b.shape, "GRAD", grad.shape)
         # print("MatMul: ", self.a.shape, self.b.shape, grad.shape)
