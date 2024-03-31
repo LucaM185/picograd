@@ -42,7 +42,7 @@ for i in range(0, 8000):
 
     if i % 100 == 0: 
         print("Loss: ", round(loss.numpy()/batch_size, 2))
-        print("Accuracy: ", ((out.argmax(-1).data == y_train[idx].data)).mean())
+        print("Accuracy: ", ((out.argmax(-1).data == y_train[idx].data)).sum())
         print()
 
     loss.zero_grad()
