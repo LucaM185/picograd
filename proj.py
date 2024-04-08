@@ -11,12 +11,13 @@ X_train, y_train = dataset[:, 1:]/255, dataset[:, 0]
 print(X_train.sum(-1))
 
 # Model definition
-batch_size = 128
-epochs = 200
+batch_size = 1024
+epochs = 900
 classes = 10
 fc0 = Linear(784, 128)
-fc1 = Linear(128, classes)
-optim = Adam([fc0, fc1], lr=0.001)
+fc5 = Linear(128, 128)
+fc1 = Linear(128, classes)#, fc1, fc5
+optim = SGD([fc0, fc1, fc5], lr=0.01, momentum=0.4)
 
 # Training loop
 lossi = []
@@ -26,7 +27,8 @@ for i in range(epochs):
     labels = y_train[idx].onehot(classes)
 
     n1 = fc0(X_train[idx]).tanh()
-    n2 = fc1(n1)
+    n5 = fc5(n1).tanh()
+    n2 = fc1(n5)
     loss = ((n2.softmax() - labels)**2).sum()
     loss.numpy()
     loss.backward()
