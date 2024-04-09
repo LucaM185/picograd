@@ -56,6 +56,9 @@ class LazyBuffer:
     def __neg__(self): return Mul(self, -1)
     def __pow__(self, exp): return Pow(self, exp)
     def __exp__(self): return Exp(self)
+    def __lt__(self, other): return LessThan(self, other)  # Half lazy, other is a Tensor
+    def __gt__(self, other): return GreaterThan(self, other)  # Half lazy, other is a Tensor
+
 
     def sum(self, axis=None): return Sum(self, axis)
     def mean(self, axis=None): return Sum(self, axis) * (1 / self.shapeTrack.shape[axis])  # Untested
@@ -64,6 +67,7 @@ class LazyBuffer:
     def max(self, axis=None): return Max(self, axis)  
     def argmax(self, axis=None): return ArgMax(self, axis)  # NOT LAZY
     def tanh(self): return tanh(self) 
+    def relu(self): return self * (self > 0) 
 
     def __str__(self): return self.numpy().__str__()
 
@@ -73,7 +77,9 @@ class LazyBuffer:
     def zero_grad(self, scale=0):
         self.grad *= scale
 
-    def __getitem__(self, index):   # THIS IS NOT LAZY!!
+    def __getitem__(self, index):
+        if isinstance(index, LazyBuffer):
+            return Select(self, index)
         if isinstance(index, slice):
             start, stop, step = index.indices(len(self.data))
             return Tensor(self.data[start:stop:step])
@@ -182,6 +188,32 @@ class Exp(Unary):
         self.grad += grad
         self.a.backward(grad * self.data)
 
+class LessThan(Binary):
+    def forward(self):  # a < b
+        self.data = self.a.forward() < self.b.forward()
+        return self.data
+
+    def backward(self, grad=1):
+        self.grad += grad
+        self.a.backward(grad * self.data)  # b is not derived, dont care for now
+
+class GreaterThan(Binary):
+    def forward(self):  # a > b
+        self.data = self.a.forward() > self.b.forward()
+        return self.data
+
+    def backward(self, grad=1):
+        self.grad += grad
+        self.a.backward(grad * self.data)  # b is not derived, dont care for now
+
+class Select(Binary):
+    def forward(self):
+        self.data = self.a.forward()[self.b.forward()]
+        return self.data
+    
+    def backward(self, grad=1):
+        self.grad += grad
+        self.a.backward(grad * self.b.data)
 
 class Div(Binary):
     def forward(self):  # a / b
@@ -190,8 +222,8 @@ class Div(Binary):
 
     def backward(self, grad=1):
         self.grad += grad
-        self.a.backward(grad / self.b.data)
-        self.b.backward(grad * -self.a.data / (self.b.data ** 2)) 
+        self.a.backward(grad / (self.b.data + 1e-8))
+        self.b.backward(grad * -self.a.data / (self.b.data ** 2 + 1e-8)) 
 
 class Pow(Binary):
     def forward(self):  # a ** b
