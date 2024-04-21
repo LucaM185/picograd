@@ -292,7 +292,7 @@ class Max(Reduce):
         self.data = np.max(self.a.forward(), axis=self.axis)
         return self.data
     
-    def backward(self, grad=1):  # WTF is the gradient of max? Definetly untested
+    def backward(self, grad=1):  # untested
         self.grad += grad
         self.a.backward(grad * (self.a.data == self.data))
 
