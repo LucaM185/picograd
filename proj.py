@@ -1,10 +1,8 @@
 import matplotlib.pyplot as plt
 from picograd import * 
-import pickle
 
 # Dataset loading 
-with open('./mnist.pickle', 'rb') as f:
-    dataset = pickle.load(f)
+dataset = ReadCSV("tiny.csv")
 
 # Dataset preprocessing
 X_train, y_train = dataset[:, 1:]/255, dataset[:, 0]
