@@ -1,7 +1,1 @@
-mnist_train.csv
-test.ipynb
-legacy
-ROCm
-testing.py
-mnist.pickle
-stuff
+__pycache__
