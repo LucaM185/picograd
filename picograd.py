@@ -40,7 +40,7 @@ class LazyBuffer:
         self.buffer = []
         self.grad = 0
     
-    def numpy(self):
+    def numpy(self) -> np.ndarray:
         return self.forward()
     
     def debug(self):
@@ -78,6 +78,8 @@ class LazyBuffer:
         self.grad *= scale
 
     def __getitem__(self, index):
+        if isinstance(index, int): 
+            return Select(self, Tensor(index))
         if isinstance(index, LazyBuffer):
             return Select(self, index)
         if isinstance(index, slice):
@@ -98,7 +100,7 @@ class Tensor(LazyBuffer):  # Tensor is just lazybuffer that contains data
         return self.data
     
     def backward(self, grad):  # Leaf tensors don't need to do anything
-        self.grad += grad
+        self.grad += grad.astype(np.float32)
 
     def numpy(self):
         return self.data
@@ -222,8 +224,8 @@ class Div(Binary):
 
     def backward(self, grad=1):
         self.grad += grad
-        self.a.backward(grad / (self.b.data + 1e-8))
-        self.b.backward(grad * -self.a.data / (self.b.data ** 2 + 1e-8)) 
+        self.a.backward(grad / (self.b.data + 1e-6))
+        self.b.backward(grad * (-self.a.data) / (self.b.data ** 2 + 1e-6)) 
 
 class Pow(Binary):
     def forward(self):  # a ** b
@@ -274,7 +276,7 @@ class Sum(Reduce):
         self.data = np.sum(self.a.forward(), axis=self.axis)
         return self.data
 
-    def backward(self, grad=Tensor((1,))):
+    def backward(self, grad=1):
         self.grad += grad
         self.a.backward(Adapt(self.grad, self.a).numpy())
 
@@ -339,8 +341,10 @@ class Linear(Module):
     def __init__(self, in_features, out_features) -> None:
         self.in_features = in_features
         self.out_features = out_features
-        self.weight = Randn((in_features, out_features), requires_grad=True) #* (1 / np.sqrt(in_features)) 
-        self.bias = Randn((1, out_features), requires_grad=True) #* (1 / np.sqrt(in_features)) # double check the 1 in (1, out_features)
+        self.weight = Randn((in_features, out_features), requires_grad=True)
+        self.bias = Randn((1, out_features), requires_grad=True) # double check the 1 in (1, out_features)
+        self.weight.data *= (1 / np.sqrt(in_features))
+        self.bias.data *= (1 / np.sqrt(in_features))
 
     def __call__(self, x):
         return x @ self.weight + self.bias
@@ -349,8 +353,9 @@ class Linear(Module):
         return [self.weight, self.bias]
 
 class Optimizer(Module):
-    def __init__(self, parameters, lr=0.01) -> None:
+    def __init__(self, parameters, lr=0.01, clip=100) -> None:
         self.lr = lr
+        self.clip = clip
         self.parameters = []
         for p in parameters:  # this could be written better prob
             if isinstance(p, LazyBuffer):
@@ -360,12 +365,14 @@ class Optimizer(Module):
                     self.parameters.append(pp)
 
 class SGD(Optimizer):
-    def __init__(self, parameters, lr=0.01, momentum=0) -> None:
-        super().__init__(parameters, lr)
+    def __init__(self, parameters, lr=0.01, momentum=0, clip=100) -> None:
+        super().__init__(parameters, lr, clip)
+        print(parameters)
         self.momentum = momentum
 
     def step(self):
         for param in self.parameters:
+            param.grad = np.clip(param.grad, -self.clip, self.clip)
             param.data -= param.grad * self.lr
 
     def zero_grad(self):
@@ -373,8 +380,8 @@ class SGD(Optimizer):
             param.zero_grad(self.momentum)
 
 class Adam(Optimizer):
-    def __init__(self, parameters, lr=0.01, beta1=0.9, beta2=0.999, epsilon=1e-8) -> None:
-        super().__init__(parameters, lr)
+    def __init__(self, parameters, lr=0.01, beta1=0.9, beta2=0.999, epsilon=1e-6, clip=100) -> None:
+        super().__init__(parameters, lr, clip)
         self.beta1 = beta1
         self.beta2 = beta2
         self.epsilon = epsilon
@@ -384,6 +391,8 @@ class Adam(Optimizer):
 
     def step(self):
         for param in self.parameters:
+            param.grad = np.clip(param.grad, -self.clip, self.clip)
+
             param.first_deriv = self.beta1 * param.first_deriv + (1 - self.beta1) * param.grad
             param.second_deriv = self.beta2 * param.second_deriv + (1 - self.beta2) * (param.grad**2)
             param.data -= self.lr * param.first_deriv / (np.sqrt(param.second_deriv) + self.epsilon)
