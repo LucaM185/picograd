@@ -3,3 +3,5 @@ test.ipynb
 legacy
 ROCm
 testing.py
+mnist.pickle
+stuff
