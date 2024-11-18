@@ -385,18 +385,30 @@ class Adam(Optimizer):
         self.beta1 = beta1
         self.beta2 = beta2
         self.epsilon = epsilon
+        self.timestep = 0  # To handle bias correction
+        
         for param in self.parameters:
-            param.first_deriv = 0
-            param.second_deriv = 0
+            param.first_moment = 0  # First moment (mean of gradients)
+            param.second_moment = 0  # Second moment (uncentered variance of gradients)
 
     def step(self):
+        self.timestep += 1  # Increment timestep for bias correction
+
         for param in self.parameters:
+            # Gradient clipping
             param.grad = np.clip(param.grad, -self.clip, self.clip)
 
-            param.first_deriv = self.beta1 * param.first_deriv + (1 - self.beta1) * param.grad
-            param.second_deriv = self.beta2 * param.second_deriv + (1 - self.beta2) * (param.grad**2)
-            param.data -= self.lr * param.first_deriv / (np.sqrt(param.second_deriv) + self.epsilon)
-    
+            # Update biased first and second moments
+            param.first_moment = self.beta1 * param.first_moment + (1 - self.beta1) * param.grad
+            param.second_moment = self.beta2 * param.second_moment + (1 - self.beta2) * (param.grad ** 2)
+
+            # Bias-corrected moments
+            first_unbiased = param.first_moment / (1 - self.beta1 ** self.timestep)
+            second_unbiased = param.second_moment / (1 - self.beta2 ** self.timestep)
+
+            # Update parameter values
+            param.data -= self.lr * first_unbiased / (np.sqrt(second_unbiased) + self.epsilon)
+
     def zero_grad(self):
         for param in self.parameters:
             param.zero_grad()

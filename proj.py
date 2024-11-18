@@ -10,14 +10,14 @@ print(X_train.sum(-1))
 
 # Model definition
 batch_size = 64
-epochs = 100
+epochs = 400
 classes = 10
 fc0 = Linear(784, 128)
 fc1 = Linear(128, 128)
 fc2 = Linear(128, classes)
 
-optim = SGD([fc0, fc1, fc2], lr=1e-3, momentum=0.9, clip=1.0)
-# optim = Adam([fc0, fc1, fc2], lr=1e-4, clip=1.0)
+# optim = SGD([fc0, fc1, fc2], lr=1e-3, momentum=0.9, clip=1.0)
+optim = Adam([fc0, fc1, fc2], lr=1e-4, clip=1.0)
 
 # Training loop
 lossi = []
