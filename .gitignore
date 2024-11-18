@@ -1,3 +1,5 @@
 mnist_train.csv
 test.ipynb
-mnist.pickle
+legacy
+ROCm
+testing.py

@@ -11,7 +11,7 @@ X_train, y_train = dataset[:, 1:]/255, dataset[:, 0]
 print(X_train.sum(-1))
 
 # Model definition
-batch_size = 256
+batch_size = 16
 epochs = 900
 classes = 10
 fc0 = Linear(784, 128)
